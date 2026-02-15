@@ -4,14 +4,9 @@ from flask_cors import CORS
 app = Flask(__name__)
 CORS(app)
 
-# Статистика для разных сцен
-# Формат: {scene_id: {choice_id: count, ...}}
-stats = {
-    'glava1': {'forest': 0, 'cave': 0, 'river': 0},
-    'glava2': {'forest': 0, 'cave': 0, 'river': 0},
-    'glava3': {'forest': 0, 'cave': 0, 'river': 0},
-    'glava5': {'forest': 0, 'cave': 0, 'river': 0}
-}
+# Статистика для разных сессий и сцен
+# Формат: {session_id: {scene_id: {choice_id: count}}}
+stats = {}
 
 @app.route('/', methods=['GET'])
 def home():
@@ -19,7 +14,7 @@ def home():
         'message': 'Visual Novel API is running',
         'endpoints': {
             '/api/choice': 'POST - Save a player choice',
-            '/api/stats': 'GET - Get current statistics for a scene'
+            '/api/stats': 'GET - Get current statistics for a scene and session'
         }
     })
 
@@ -30,27 +25,30 @@ def save_choice():
         if not data:
             return jsonify({'error': 'No data provided'}), 400
         
+        session_id = data.get('session_id')
         scene = data.get('scene')
         choice_id = data.get('choice_id')
         
-        if not scene or not choice_id:
-            return jsonify({'error': 'Missing scene or choice_id'}), 400
+        if not session_id or not scene or not choice_id:
+            return jsonify({'error': 'Missing session_id, scene or choice_id'}), 400
         
-        # Инициализируем сцену, если её нет
-        if scene not in stats:
-            stats[scene] = {}
+        # Инициализируем структуры данных
+        if session_id not in stats:
+            stats[session_id] = {}
         
-        # Инициализируем выбор, если его нет
-        if choice_id not in stats[scene]:
-            stats[scene][choice_id] = 0
+        if scene not in stats[session_id]:
+            stats[session_id][scene] = {}
+        
+        if choice_id not in stats[session_id][scene]:
+            stats[session_id][scene][choice_id] = 0
         
         # Увеличиваем счетчик
-        stats[scene][choice_id] += 1
+        stats[session_id][scene][choice_id] += 1
         
         return jsonify({
             'success': True,
-            'message': f'Choice recorded for scene {scene}',
-            'stats': stats[scene]
+            'message': f'Choice recorded for session {session_id}, scene {scene}',
+            'stats': stats[session_id][scene]
         })
         
     except Exception as e:
@@ -58,20 +56,27 @@ def save_choice():
 
 @app.route('/api/stats', methods=['GET'])
 def get_stats():
+    session_id = request.args.get('session_id')
     scene = request.args.get('scene', 'glava1')
     
-    if scene not in stats:
+    if not session_id:
+        return jsonify({'error': 'Missing session_id'}), 400
+    
+    # Возвращаем статистику только для указанной сессии
+    if session_id not in stats or scene not in stats[session_id]:
         return jsonify({
             'scene': scene,
+            'session': session_id,
             'choices': {},
             'total': 0
         })
     
-    scene_stats = stats[scene]
+    scene_stats = stats[session_id][scene]
     total = sum(scene_stats.values())
     
     return jsonify({
         'scene': scene,
+        'session': session_id,
         'choices': scene_stats,
         'total': total
     })
